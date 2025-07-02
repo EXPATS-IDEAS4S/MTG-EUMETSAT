@@ -29,7 +29,7 @@ from shapely.wkt import loads
 from shapely.geometry import Polygon
 import glob
 import xarray as xr
-import geopandas as gpd
+#import geopandas as gpd
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
@@ -56,15 +56,11 @@ def main():
     # Select an FCI collection (check file collections.txt for desired product)
     # eg "FCI Level 1c High Resolution Image Data - MTG - 0 degree" - "EO:EUM:DAT:0665"
     selected_collection = datastore.get_collection('EO:EUM:DAT:0665')
-    print(selected_collection)
-    exit()
 
-    ###################################################
     # define set of days to process
     date_start = datetime.datetime(2025, 5, 1)
     date_end = datetime.datetime(2025, 5, 31)
-    ###################################################
-
+    
     # find all dates between date_start and date_end
     date_range = [date_start + datetime.timedelta(days=x) for x in range(0, (date_end - date_start).days + 1)]
     
