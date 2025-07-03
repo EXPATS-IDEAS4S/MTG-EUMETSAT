@@ -18,7 +18,8 @@ from regrid_functions import regrid_data, fill_missing_data_with_interpolation
 
 
 # --- Configuration ---
-CONFIG = {
+CONFIG = {\
+    'output_base': Path('/data/sat/msg/mtg/fci/'),
     'mtg_base': Path('/data/trade_pc/mtg/fci/'),
     'cth_base': None,
     'file_extension': '*.nc',
@@ -34,7 +35,7 @@ CONFIG = {
     'interp_method': 'nearest',  # Interpolation method for regridding
     'grid_step_deg': [(0.015,0.010), (0.0075,0.005)],  # Regular grid step in degrees
     'compress_level': 9,
-    'delete_chunks': False,
+    'delete_chunks': False, #implemnt it here or in a another scirpt?
 }
 
 # --- Logging setup ---
@@ -170,12 +171,12 @@ def make_scene(msg_file, cth_file, config):
 
 
 
-def load_and_crop(scene, channels, roi):
+def load_and_crop(scene, channel, roi):
     """
     Load all `channels` into `scene` and crop to the lon/lat box in `roi`.
     Returns the cropped Scene.
     """
-    scene.load(channels)
+    scene.load([channel])
     ll_bbox = (
         roi['lon_min'], roi['lat_min'],
         roi['lon_max'], roi['lat_max']
@@ -197,7 +198,7 @@ def preprocess_array(arr, lat_src, lon_src, target_grid, method):
 
 
 
-def build_data_vars(crop, config, grids):
+def build_data_vars(crop, ch, config, grid):
     """
     Build data variables per channel. If regular grid: regrid.
     If irregular: keep native projection, add lat/lon as variables separately.
@@ -205,26 +206,25 @@ def build_data_vars(crop, config, grids):
     data_vars = {}
     is_regular = config.get('regular_grid', False)
 
-    for idx, ch in enumerate(config['channels']):
-        print(f"Processing channel: {ch}")
-        raw = crop[ch].values.astype(np.float32)
+    
+    raw = crop[ch].values.astype(np.float32)
 
-        if is_regular:
-            lat_src, lon_src = crop[ch].attrs['area'].get_lonlats()
-            raw = preprocess_array(
-                raw, lat_src, lon_src,
-                target_grid=grids[idx],
-                method=config['interp_method']
-            )
-            data_vars[ch] = (('lat', 'lon'), raw)
-        else:
-            data_vars[ch] = (('y', 'x'), raw)
+    if is_regular:
+        lat_src, lon_src = crop[ch].attrs['area'].get_lonlats()
+        raw = preprocess_array(
+            raw, lat_src, lon_src,
+            target_grid=grid,
+            method=config['interp_method']
+        )
+        data_vars[ch] = (('lat', 'lon'), raw)
+    else:
+        data_vars[ch] = (('y', 'x'), raw)
 
     return data_vars
 
 
 
-def build_coords(crop, config, grids, ts):
+def build_coords(crop, ch, config, grid, ts):
     """
     If regridded to regular lat/lon: return 1D lat/lon coords.
     Else: return 2D lat/lon as data variables, and x/y as indices.
@@ -232,7 +232,7 @@ def build_coords(crop, config, grids, ts):
     is_regular = config.get('regular_grid', False)
 
     if is_regular:
-        lat2d, lon2d = grids[0]
+        lat2d, lon2d = grid
         lat1d = lat2d[:, 0]
         lon1d = lon2d[0, :]
         coords = {
@@ -241,7 +241,7 @@ def build_coords(crop, config, grids, ts):
             'time': (('time',), [ts])
         }
     else:
-        lat2d, lon2d = crop[config['channels'][0]].attrs['area'].get_lonlats()
+        lon2d, lat2d = crop[ch].attrs['area'].get_lonlats()
         ny, nx = lat2d.shape
         coords = {
             'x': (('x',), np.arange(nx, dtype=np.int32)),
@@ -256,7 +256,7 @@ def build_coords(crop, config, grids, ts):
 
 
 
-def process_timestamp(ts, msg_file, cth_file, config, grids=None):
+def process_timestamp(ts, channel, msg_file, cth_file, config, grid=None, merge_coords=True):
     """
     High‑level function that glues together all steps:
       1) Scene creation
@@ -269,18 +269,26 @@ def process_timestamp(ts, msg_file, cth_file, config, grids=None):
     scn = make_scene(msg_file, cth_file, config)
 
     # 2) Load & crop channels
-    cropped = load_and_crop(scn, config['channels'], config['roi'])
+    cropped = load_and_crop(scn, channel, config['roi'])
 
     # 3) Build data variables
-    data_vars = build_data_vars(cropped, config, grids or [None]*len(config['channels']))
-
+    data_vars = build_data_vars(cropped, channel, config, grid)
+    #print(data_vars)
 
     # 4) Build coords
-    coords = build_coords(cropped, config, grids or [None]*len(config['channels']), ts)
-
+    coords = build_coords(cropped, channel, config, grid, ts)
+    #print(coords)
 
     # 5) Assemble and return
-    return xr.Dataset(data_vars=data_vars, coords=coords)
+    if merge_coords:
+        # Merge data_vars and coords into a single dict
+        ds = xr.Dataset(data_vars=data_vars, coords=coords)
+    else:
+        #merge only the time
+        ds = xr.Dataset(data_vars=data_vars)
+        ds['time'] = (('time',), [ts])
+        
+    return ds
 
 
 def save_daily(ds, day_ts, config):
@@ -311,32 +319,57 @@ def main():
     mtg_map = build_time_map(mtg_files, lambda f: extract_mtg_time(f, cfg['time_interval_min']))
 
     cth_map = build_time_map(cth_files, extract_cth_time)
-    grids = make_regular_grid(cfg['roi'], cfg['grid_step_deg']) if cfg['regular_grid'] else None
+    grids = make_regular_grid(cfg['roi'], cfg['grid_step_deg']) if cfg['regular_grid'] else [None]*len(cfg['channels'])
 
+    # Initialize tracking per channel
+    daily_ds_per_channel = {ch: None for ch in cfg['channels']}
+    last_day_per_channel = {ch: None for ch in cfg['channels']}
 
-    daily_ds = None
-    last_day = None
-    for ts in timestamps:
+    for idx, ts in enumerate(timestamps):
         msg_f = mtg_map.get(ts)
         cth_f = cth_map.get(ts)
         msg_f = list(map(str, msg_f))
         cth_f = list(map(str, cth_f)) if cth_f else None
- 
+
         if not msg_f or (cfg['parallax'] and not cth_f):
             log.warning(f"Missing for {ts}")
             continue
-        ds = process_timestamp(ts, msg_f, cth_f, cfg, grids)
-        print(ds)
-        exit()
-        day = ts.day
-        if day != last_day and daily_ds is not None:
-            save_daily(daily_ds, daily_ds.time.values[0], cfg)
-            daily_ds = ds
-        else:
-            daily_ds = xr.concat([daily_ds, ds], dim='time') if daily_ds else ds
-        last_day = day
-    if daily_ds is not None:
-        save_daily(daily_ds, daily_ds.time.values[0], cfg)
+
+        for channel, grid in zip(cfg['channels'], grids):
+            print(f"Processing {ts} for channel {channel}")
+            
+            # Save original lat/lon coords once if not regular grid
+            if not cfg['regular_grid'] and idx == 0:
+                scn = make_scene(msg_f, cth_f, cfg)
+                crop = load_and_crop(scn, channel, cfg['roi'])
+                coords = build_coords(crop, channel, cfg, grid, ts)
+                ds_coords = xr.Dataset(coords=coords)
+                ds_coords.to_netcdf(cfg['output_base'] / f"{channel}_original_coords.nc", format='NETCDF4')
+
+            # Process the timestamp for current channel
+            ds = process_timestamp(ts, channel, msg_f, cth_f, cfg, grid, cfg['regular_grid'])
+
+            # Check for day change
+            day = ts.day
+            last_day = last_day_per_channel[channel]
+
+            if last_day != day and daily_ds_per_channel[channel] is not None:
+                save_daily(daily_ds_per_channel[channel], daily_ds_per_channel[channel].time.values[0], cfg, channel)
+                daily_ds_per_channel[channel] = ds
+            else:
+                daily_ds_per_channel[channel] = (
+                    xr.concat([daily_ds_per_channel[channel], ds], dim='time')
+                    if daily_ds_per_channel[channel] is not None else ds
+                )
+
+            last_day_per_channel[channel] = day
+
+    # Final flush
+    for channel, ds_day in daily_ds_per_channel.items():
+        if ds_day is not None:
+            save_daily(ds_day, ds_day.time.values[0], cfg, channel)
 
 if __name__ == '__main__':
     main()
+
+#827452 nohup
