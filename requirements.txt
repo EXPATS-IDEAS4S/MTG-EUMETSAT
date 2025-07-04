@@ -1,0 +1,8 @@
+xarray
+numpy
+pandas
+scipy
+netcdf4
+h5netcdf
+satpy
+
