@@ -26,12 +26,12 @@ This repository provides tools to process and visualize Meteosat Third Generatio
 2. Run the processing pipeline:
 
    ```bash
-   python process.py
+   python processing/run_pipeline.py
    ```
 3. Visualize daily results with:
 
    ```bash
-   python plot_day.py
+   python plotting/plot_daily_files.py
    ```
 
    This generates PNG images and an animated GIF per day and channel.
