@@ -2,6 +2,12 @@
 """
 Improved MSG+CTH processing script with modular structure,
 pathlib, logging, and efficient load/crop handling.
+
+@authors: Daniele Corradini and Claudia Acquistapace
+
+TODO: add CTH reader and parallax correction.
+TODO: add regular grid option? Or save the original lat/lon coordinates as variables?
+TODO: implement the delete_chunks option to remove the original chunks after processing?
 """
 import logging
 import time
@@ -13,8 +19,9 @@ from satpy import Scene
 from typing import Sequence
 from collections import defaultdict
 from typing import Callable, Iterable, Dict, List
+import pandas as pd
 
-from regrid_functions import regrid_data, fill_missing_data_with_interpolation
+from old.regrid_functions import regrid_data, fill_missing_data_with_interpolation
 
 
 # --- Configuration ---
@@ -25,12 +32,12 @@ CONFIG = {\
     'file_extension': '*.nc',
     'mtg_reader': 'fci_l1c_nc',
     'cth_reader': None,  # TODO still to be defined
-    'channels': ['ir_105', 'vis_06'],
+    'channels': ['vis_06', 'ir_105'],
     'roi': {'lon_min': 5, 'lat_min': 42, 'lon_max': 16, 'lat_max': 52},
     'parallax': False,
     'time_interval_min': 10,
-    'start_date': '2025.06.01',
-    'end_date': '2025.06.03', #last timestamp exlcuded
+    'start_date': '2025.06.29',
+    'end_date': '2025.07.02', #last timestamp exlcuded
     'regular_grid': False,
     'interp_method': 'nearest',  # Interpolation method for regridding
     'grid_step_deg': [(0.015,0.010), (0.0075,0.005)],  # Regular grid step in degrees
@@ -122,24 +129,27 @@ def extract_cth_time(fname: Path):
 def build_time_map(
     files: Iterable[Path],
     time_extractor: Callable[[Path], datetime],
-    ) -> Dict[datetime, List[Path]]:
+    ) -> Dict[datetime, List[str]]:
     """
     Groups files by the datetime returned from time_extractor.
+    Converts each Path to str.
 
     Args:
         files: An iterable of Path objects.
         time_extractor: A function that maps a Path -> datetime.
 
     Returns:
-        A dict mapping each datetime to the list of files having that timestamp.
+        A dict mapping each datetime to a list of file paths (as str).
+        Returns an empty dict if no files are provided.
     """
-    #return empty dict if files is empty
     if not files:
         return {}
+
     grouped = defaultdict(list)
     for f in files:
         t = time_extractor(f)
-        grouped[t].append(f)
+        grouped[t].append(str(f))  # Convert Path to str here
+
     return dict(grouped)
 
 
@@ -243,14 +253,25 @@ def build_coords(crop, ch, config, grid, ts):
     else:
         lon2d, lat2d = crop[ch].attrs['area'].get_lonlats()
         ny, nx = lat2d.shape
+
+        # Coordinates as x/y indices only
         coords = {
             'x': (('x',), np.arange(nx, dtype=np.int32)),
             'y': (('y',), np.arange(ny, dtype=np.int32)),
-            'time': (('time',), [ts])
+            # 'time': (('time',), [ts])  # Add this if needed
         }
-        # lat/lon as 2D data variables
-        coords['latitude'] = (('y', 'x'), lat2d.astype(np.float32))
-        coords['longitude'] = (('y', 'x'), lon2d.astype(np.float32))
+
+        # Data variables including latitude and longitude as 2D arrays
+        data_vars = {
+            'latitude': (('y', 'x'), lat2d.astype(np.float32)),
+            'longitude': (('y', 'x'), lon2d.astype(np.float32)),
+            # Add your satellite channels here as well, like:
+            # ch: (('y', 'x'), crop[ch].values.astype(np.float32))
+        }
+
+        # Then create your dataset
+        coords = xr.Dataset(data_vars=data_vars, coords=coords)
+
 
     return coords
 
@@ -291,15 +312,80 @@ def process_timestamp(ts, channel, msg_file, cth_file, config, grid=None, merge_
     return ds
 
 
-def save_daily(ds, day_ts, config):
+def save_daily(ds, day_ts, config, channel, suffix=None):
+    # Convert numpy.datetime64 to Python datetime
+    day_ts = pd.to_datetime(day_ts).to_pydatetime()
     outdir = config['output_base'] / f"{day_ts.year:04d}" / f"{day_ts.month:02d}"
     outdir.mkdir(parents=True, exist_ok=True)
-    fname = f"{day_ts:%Y%m%d}-processed.nc"
+
+    # Dynamically build suffix based on config flags
+    if suffix is None:
+        suffix_parts = []
+        if config.get('regular_grid'):
+            suffix_parts.append("regrid")
+        if config.get('parallax'):
+            suffix_parts.append("parallax")
+        suffix = "_".join(suffix_parts) if suffix_parts else "raw"
+
+    fname = f"{channel}_{day_ts:%Y%m%d}_{suffix}.nc"
     path = outdir / fname
-    enc = {ch: {'zlib': True, 'complevel': config['compress_level']} for ch in config['channels']}
+
+    enc = {
+    var: {'zlib': True, 'complevel': config['compress_level']} for var in ds.data_vars}
     enc['time'] = {'dtype': 'i4', 'units': 'seconds since 2000-01-01'}
+
     ds.to_netcdf(path, format='NETCDF4', encoding=enc)
     log.info(f"Saved {path}")
+
+
+def create_nan_dataset(ts, channel, config, grid, regular):
+    """
+    Creates a dummy xarray Dataset filled with NaNs for a given timestamp and channel.
+    Uses build_coords() to ensure consistent coordinate creation.
+    """
+    # If not regular grid, we need a dummy "crop" input with area attribute
+    if not regular:
+        # You can either load one dummy scene, or pass one from outside
+        # Here, we use the stored original coordinates if available
+        coord_path = config['output_base'] / f"{channel}_original_coords.nc"
+        if not coord_path.exists():
+            raise FileNotFoundError(f"Coordinate reference file not found: {coord_path}")
+        coords_ds = xr.load_dataset(coord_path)
+        crop = {
+            channel: xr.DataArray(
+                np.zeros_like(coords_ds['latitude'].values, dtype=np.float32),
+                attrs={'area': type('area', (), {
+                    'get_lonlats': lambda: (coords_ds['longitude'].values, coords_ds['latitude'].values)
+                })()}
+            )
+        }
+    else:
+        crop = None
+
+    # Build coords using your existing function
+    coords = build_coords(crop, channel, config, grid, ts)
+
+    # Determine shape from coordinates
+    if isinstance(coords, xr.Dataset):  # not regular
+        shape = coords['latitude'].shape
+        dims = ('y', 'x')
+    else:  # regular grid
+        shape = (len(coords['lat']), len(coords['lon']))
+        dims = ('lat', 'lon')
+
+    # Create DataArray filled with NaNs
+    data = xr.DataArray(np.full(shape, np.nan, dtype=np.float32),
+                        dims=dims,
+                        coords=coords.coords if isinstance(coords, xr.Dataset) else coords)
+
+    # Wrap in a Dataset and assign time dimension
+    ds = xr.Dataset({channel: data.expand_dims('time')})
+    ds = ds.assign_coords(time=('time', [ts]))
+
+    return ds
+
+
+
 
 # --- Main workflow ---
 def main():
@@ -309,7 +395,7 @@ def main():
 
     # build your list of timestamps
     timestamps = compute_timestamps(start, end, cfg["time_interval_min"])[:-1]
-    print(timestamps)
+    #print(timestamps)
 
     # now only look under the yyyy/mm/dd folders for those dates
     mtg_files = list_mtg_files(cfg["mtg_base"], timestamps, pattern=cfg['file_extension'])
@@ -326,33 +412,32 @@ def main():
     last_day_per_channel = {ch: None for ch in cfg['channels']}
 
     for idx, ts in enumerate(timestamps):
-        msg_f = mtg_map.get(ts)
+        mtg_f = mtg_map.get(ts)
         cth_f = cth_map.get(ts)
-        msg_f = list(map(str, msg_f))
-        cth_f = list(map(str, cth_f)) if cth_f else None
+        print(mtg_f, cth_f)
 
-        if not msg_f or (cfg['parallax'] and not cth_f):
-            log.warning(f"Missing for {ts}")
-            continue
+        missing = not mtg_f or (cfg['parallax'] and not cth_f)
 
         for channel, grid in zip(cfg['channels'], grids):
             print(f"Processing {ts} for channel {channel}")
-            
-            # Save original lat/lon coords once if not regular grid
-            if not cfg['regular_grid'] and idx == 0:
-                scn = make_scene(msg_f, cth_f, cfg)
-                crop = load_and_crop(scn, channel, cfg['roi'])
-                coords = build_coords(crop, channel, cfg, grid, ts)
-                ds_coords = xr.Dataset(coords=coords)
-                ds_coords.to_netcdf(cfg['output_base'] / f"{channel}_original_coords.nc", format='NETCDF4')
 
-            # Process the timestamp for current channel
-            ds = process_timestamp(ts, channel, msg_f, cth_f, cfg, grid, cfg['regular_grid'])
+            if missing:
+                log.warning(f"Missing data for {ts}, creating NaN dataset.")
+                ds = create_nan_dataset(ts, channel, cfg, grid, cfg['regular_grid'])
+            else:
+                # Save original lat/lon coords once if not regular grid
+                if not cfg['regular_grid'] and idx == 0:
+                    scn = make_scene(mtg_f, cth_f, cfg)
+                    crop = load_and_crop(scn, channel, cfg['roi'])
+                    ds_coords = build_coords(crop, channel, cfg, grid, ts)
+                    ds_coords.to_netcdf(cfg['output_base'] / f"{channel}_original_coords.nc", format='NETCDF4')
+                    print(f"Saved original coords for {channel} at {ts}")
 
-            # Check for day change
+                ds = process_timestamp(ts, channel, mtg_f, cth_f, cfg, grid, cfg['regular_grid'])
+
+            # Daily concat logic (same as before)
             day = ts.day
             last_day = last_day_per_channel[channel]
-
             if last_day != day and daily_ds_per_channel[channel] is not None:
                 save_daily(daily_ds_per_channel[channel], daily_ds_per_channel[channel].time.values[0], cfg, channel)
                 daily_ds_per_channel[channel] = ds
@@ -361,8 +446,8 @@ def main():
                     xr.concat([daily_ds_per_channel[channel], ds], dim='time')
                     if daily_ds_per_channel[channel] is not None else ds
                 )
-
             last_day_per_channel[channel] = day
+
 
     # Final flush
     for channel, ds_day in daily_ds_per_channel.items():
@@ -372,4 +457,4 @@ def main():
 if __name__ == '__main__':
     main()
 
-#827452 nohup
+#995179 nohup

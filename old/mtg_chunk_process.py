@@ -26,9 +26,9 @@ import cartopy.feature as cfeature
 from shapely.geometry import LineString
 from satpy import Scene
 
-from domain import user_roi
+from download.domain import user_roi
 
-from mtg_chunks import create_output_folder
+from old.mtg_chunks import create_output_folder
 
 def main():
     

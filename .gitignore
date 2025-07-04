@@ -1,3 +1,5 @@
 ./sat_enviroment
 
-credentials.py
+download/credentials.py
+
+__pycache__/

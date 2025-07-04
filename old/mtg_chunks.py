@@ -37,8 +37,8 @@ from shapely.geometry import LineString
 from satpy import Scene
 
 # read credentials from file
-from credentials import *   
-from domain import user_roi
+from download.credentials import *   
+from download.domain import user_roi
 
 #################################################
 
