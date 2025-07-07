@@ -83,13 +83,20 @@ def main():
             else:
                 # Save original lat/lon coords once if not regular grid
                 if not cfg['regular_grid'] and idx == 0:
-                    scn = make_scene(mtg_f, cth_f, cfg)
-                    crop = load_and_crop(scn, [channel], cfg['roi'])
-                    ds_coords = build_coords(crop, channel, cfg, grid, ts)
-                    #create output folder if it does not exist
-                    cfg['output_base'].mkdir(parents=True, exist_ok=True)
-                    ds_coords.to_netcdf(cfg['output_base'] / f"{channel}_original_coords.nc", format='NETCDF4')
-                    print(f"Saved original coords for {channel} at {ts}")
+                    out_path = cfg['output_base'] / f"{channel}_original_coords.nc"
+
+                    if not out_path.exists():
+                        scn = make_scene(mtg_f, cth_f, cfg)
+                        crop = load_and_crop(scn, [channel], cfg['roi'])
+                        ds_coords = build_coords(crop, channel, cfg, grid, ts)
+
+                        # Create output folder if it does not exist
+                        cfg['output_base'].mkdir(parents=True, exist_ok=True)
+
+                        ds_coords.to_netcdf(out_path, format='NETCDF4')
+                        print(f"Saved original coords for {channel} at {ts}")
+                    else:
+                        print(f"Original coords for {channel} already exist at {out_path}, skipping.")
 
                 ds = process_timestamp(ts, channel, mtg_f, cth_f, cfg, grid, cfg['regular_grid'])
 
@@ -118,4 +125,4 @@ if __name__ == '__main__':
     main()
 
 
-#1041553 nohup
+#1786145 nohup
