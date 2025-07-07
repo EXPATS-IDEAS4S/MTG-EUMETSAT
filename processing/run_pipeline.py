@@ -1,14 +1,29 @@
 #!/usr/bin/env python3
 """
-Improved MSG+CTH processing script with modular structure,
-pathlib, logging, and efficient load/crop handling.
+Satellite Data Processing Pipeline for MTG FCI satellite imagery
 
-@authors: Daniele Corradini and Claudia Acquistapace
+This script  processes Meteosat Third Generation (MTG) 
+data and it uses Cloud Top Height (CTH) products for the parallax correction. 
 
-TODO: add CTH reader and parallax correction.
-TODO: add regular grid option? Or save the original lat/lon coordinates as variables?
-TODO: implement the delete_chunks option to remove the original chunks after processing?
+Main features:
+- Generates timestamped xarray Datasets from MTG and CTH input
+- Handles missing data by inserting NaN-filled placeholders
+- Supports regular and native grid processing
+- Crops scenes to a user-defined region of interest (ROI)
+- Performs optional parallax correction
+- Groups output into daily NetCDF files
+- Saves original geolocation (lat/lon) once per channel for non-regular grids
+
+Authors:
+    Daniele Corradini
+    Claudia Acquistapace
+
+TODO:
+    - Implement full CTH reader integration and parallax correction
+    - Consider saving original lat/lon as regular variables even with regridding
+    - Add option to delete original chunked output post-processing
 """
+
 import logging
 from pathlib import Path
 import xarray as xr
@@ -68,11 +83,20 @@ def main():
             else:
                 # Save original lat/lon coords once if not regular grid
                 if not cfg['regular_grid'] and idx == 0:
-                    scn = make_scene(mtg_f, cth_f, cfg)
-                    crop = load_and_crop(scn, [channel], cfg['roi'])
-                    ds_coords = build_coords(crop, channel, cfg, grid, ts)
-                    ds_coords.to_netcdf(cfg['output_base'] / f"{channel}_original_coords.nc", format='NETCDF4')
-                    print(f"Saved original coords for {channel} at {ts}")
+                    out_path = cfg['output_base'] / f"{channel}_original_coords.nc"
+
+                    if not out_path.exists():
+                        scn = make_scene(mtg_f, cth_f, cfg)
+                        crop = load_and_crop(scn, [channel], cfg['roi'])
+                        ds_coords = build_coords(crop, channel, cfg, grid, ts)
+
+                        # Create output folder if it does not exist
+                        cfg['output_base'].mkdir(parents=True, exist_ok=True)
+
+                        ds_coords.to_netcdf(out_path, format='NETCDF4')
+                        print(f"Saved original coords for {channel} at {ts}")
+                    else:
+                        print(f"Original coords for {channel} already exist at {out_path}, skipping.")
 
                 ds = process_timestamp(ts, channel, mtg_f, cth_f, cfg, grid, cfg['regular_grid'])
 
@@ -99,3 +123,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+#1786145 nohup
