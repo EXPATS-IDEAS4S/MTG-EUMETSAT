@@ -6,6 +6,10 @@ The script downloads the data of the previous day with respect to the execution 
 It downloads the region of interest defined by the user. If the file is already downloaded, 
 it is skipped.
 Once download is over, it reads the chunks 
+
+lauch command with nohup
+nohup python3 download/download_fci_chunks.py > download_fci_chunks.log 2>&1 &
+
 """
 
 # Import libraries
@@ -57,12 +61,11 @@ def main():
     # eg "FCI Level 1c High Resolution Image Data - MTG - 0 degree" - "EO:EUM:DAT:0665"
     selected_collection = datastore.get_collection('EO:EUM:DAT:0665')
     print(selected_collection)
-    exit()
 
     ###################################################
     # define set of days to process
-    date_start = datetime.datetime(2025, 5, 1)
-    date_end = datetime.datetime(2025, 5, 31)
+    date_start = datetime.datetime(2025, 7, 1)
+    date_end = datetime.datetime(2025, 7, 7)
     ###################################################
 
     # find all dates between date_start and date_end
@@ -87,7 +90,7 @@ def main():
         print(f"Defined ROI: {user_roi}")
 
         # Load chunk polygons and find relevant chunks
-        chunk_polygons, roi_polygon, relevant_chunks = load_chunk_poligons("readers/FCI_chunks.wkt", user_roi)
+        chunk_polygons, roi_polygon, relevant_chunks = load_chunk_poligons("download/FCI_chunks.wkt", user_roi)
 
         # Retrieve datasets that match the filter
         products = selected_collection.search(
