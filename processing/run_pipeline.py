@@ -34,7 +34,7 @@ from config import CONFIG as cfg
 # --- Internal modules ---
 from time_utils import compute_timestamps,  extract_mtg_time, extract_cth_time
 from io_utils import list_mtg_files, list_cth_files, build_time_map
-from scene_utils import make_scene, load_and_crop
+from scene_utils import make_scene, load_and_crop, has_corrupted_files
 from dataset_builder import build_coords, create_nan_dataset
 from process import process_timestamp, save_daily
 from grid_utils import make_regular_grid
@@ -72,13 +72,16 @@ def main():
         cth_f = cth_map.get(ts)
         print(mtg_f, cth_f)
 
-        missing = not mtg_f or (cfg['parallax'] and not cth_f)
+        #check if files are corrupted
+
+        corrupted = has_corrupted_files(mtg_f)
+        missing = not mtg_f or corrupted  #or (cfg['parallax'] and not cth_f)
 
         for channel, grid in zip(cfg['channels'], grids):
             print(f"Processing {ts} for channel {channel}")
 
             if missing:
-                log.warning(f"Missing data for {ts}, creating NaN dataset.")
+                log.warning(f"Missing or corrupted data for {ts}, creating NaN dataset.")
                 ds = create_nan_dataset(ts, channel, cfg, grid)
             else:
                 # Save original lat/lon coords once if not regular grid
@@ -125,4 +128,4 @@ if __name__ == '__main__':
     main()
 
 
-#1786145 nohup
+#2114797 nohup
