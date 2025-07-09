@@ -7,6 +7,30 @@ Includes:
 """
 
 from satpy import Scene
+import xarray as xr
+
+def has_corrupted_files(mtg_files):
+    """
+    Check if any of the given MTG NetCDF files are corrupted by attempting to open them with xarray.
+
+    Parameters:
+        mtg_files (list): List of file paths.
+
+    Returns:
+        bool: True if any file is corrupted (unreadable or empty), False otherwise.
+    """
+    for file in mtg_files:
+        try:
+            with xr.open_dataset(file) as ds:
+                if not ds or len(ds.data_vars) == 0:
+                    print(f"Empty dataset detected: {file}")
+                    return True
+        except Exception as e:
+            print(f"Error opening {file}: {e}")
+            return True
+    
+    return False
+
 
 
 def make_scene(msg_file, cth_file, config):
