@@ -7,6 +7,7 @@ import numpy as np
 import imageio
 import os
 import shutil
+import pdb
 
 """
 script to plot quicklooks gif animated of MTG FCI data for a list of days and a channel
@@ -22,7 +23,7 @@ nohup python3 plotting/plot_quicklooks.py > plotting/plot_quicklooks.log 2>&1 &
 
 """
 
-from plotting.plot_utils import channel_configs, plot_teamx_sites, domain_TEAMX, mtg_fci_daily_files_path, quicklook_browser_output_path
+from plotting.plot_utils import channel_configs, same_image_seq_as_mp4, domain_TEAMX, mtg_fci_daily_files_path, quicklook_browser_output_path
 
 
 from pathlib import Path
@@ -125,11 +126,21 @@ def main():
 
     # Find days to plot
     # generate days string for the entire month 2025 06 
-    days = [f"202505{str(i).zfill(2)}" for i in range(10, 31)]  # June 2025
+    days = [f"202506{str(i).zfill(2)}" for i in range(10, 11)]  # June 2025
 
 
     # loop on days to be plotted (month of june 2025)
     for day in days:
+        
+        # define domain of interest
+        extent = domain_TEAMX  # replace with the desired domain
+        domain_name = "TEAMx"  # replace with the desired domain name
+        regrid = False
+        parallax = False
+        gif = False
+        mp4 = True
+        
+        out_root = out_root
         
         print('Plotting data for day:', day)
         
@@ -139,16 +150,21 @@ def main():
         for channel in channels:
             
             print(f"Processing channel: {channel}")
+            if gif:
+                # Check if GIF already exists for this day and channel
+                video_path = f"{out_root}{day}_{channel}_quicklook_raw_{domain_name}.gif"
+                print(gif_path)
+            if mp4:
+                # Check if MP4 already exists for this day and channel
+                video_path = f"{out_root}{day}_{channel}_quicklook_raw_{domain_name}.mp4"
+                print(video_path)
             
-            # Check if GIF already exists for this day and channel
-            gif_path = f"{out_root}{day}_{channel}_quicklook_raw_TEAMx.gif"
-            print(gif_path)
-            if Path(gif_path).exists():
-                print(f"GIF for {day} and channel {channel} already exists, skipping...")
+            if Path(video_path).exists():
+                print(f"video for {day} and channel {channel} already exists, skipping...")
                 continue
             
             else:
-                print(f"GIF for {day} and channel {channel} does not exist, proceeding with plotting...")
+                print(f"video for {day} and channel {channel} does not exist, proceeding with plotting...")
             
                 # read channel configuration
                 cmap = channel_configs[channel]["cmap"]
@@ -156,18 +172,11 @@ def main():
                 vmax = channel_configs[channel]["vmax"]
                 unit = channel_configs[channel]["unit"]
 
-                # define domain of interest
-                extent = domain_TEAMX  # replace with the desired domain
-                domain_name = "TEAMx"  # replace with the desired domain name
-                regrid = False
-                parallax = False
-                gif = True
 
                 # create output directory for quicklooks
                 outdir = Path(out_root)
                 outdir.mkdir(parents=True, exist_ok=True)
 
-                
                 
                 # read data for the day setting the complete path
                 ds, suffix = load_data_for_day(folder, channel, day, regrid, parallax)
@@ -237,6 +246,31 @@ def main():
                             print(f"Deleting {filename} to save space...")
                             print(os.path.join(out_root, filename))
                             os.remove(os.path.join(out_root, filename))
+                            
+                # if output format is mp4, create a video from the images
+                if mp4:
+                
+                    matched_images = []
+                    for file_name in sorted(os.listdir(out_root)):
+                        if file_name.endswith(".png"):
+                            matched_images.append(file_name)
+                            
+                    print(f"Matched images for MP4: {matched_images}")
+                         
+                    same_image_seq_as_mp4(out_root,
+                                          matched_images,
+                                          day, 
+                                          channel,
+                                          domain_name,
+                                          fps=10)
+                    pdb.set_trace()
+                    # delete all matched images to save space
+                    for filename in matched_images:
+                        if filename.endswith('.png'):
+                            print(f"Deleting {filename} to save space...")
+                            print(os.path.join(out_root, filename))
+                            os.remove(os.path.join(out_root, filename))
+                    
                             
                 print(f"Deleted all PNG files in {outdir}")
 
