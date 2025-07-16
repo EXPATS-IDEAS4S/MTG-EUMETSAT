@@ -125,7 +125,7 @@ def main():
 
     # Find days to plot
     # generate days string for the entire month 2025 06 
-    days = [f"202505{str(i).zfill(2)}" for i in range(10, 31)]  # June 2025
+    days = [f"202507{str(i).zfill(2)}" for i in range(1, 15)]  # June 2025
 
 
     # loop on days to be plotted (month of june 2025)
