@@ -8,27 +8,47 @@ Includes:
 
 from satpy import Scene
 import xarray as xr
+import logging
+from pathlib import Path
 
-def has_corrupted_files(mtg_files):
+log = logging.getLogger(__name__)
+
+
+def has_corrupted_files(mtg_files, verbose=False):
     """
-    Check if any of the given MTG NetCDF files are corrupted by attempting to open them with xarray.
+    Check if any of the given MTG NetCDF files are corrupted or unreadable.
 
     Parameters:
-        mtg_files (list): List of file paths.
+        mtg_files (list[str or Path]): List of file paths.
+        verbose (bool): If True, logs additional debug information.
 
     Returns:
-        bool: True if any file is corrupted (unreadable or empty), False otherwise.
+        bool: True if any file is corrupted (unreadable, empty, or missing), False otherwise.
     """
+    if not mtg_files:
+        if verbose:
+            log.warning("No MTG files provided.")
+        return True
+
     for file in mtg_files:
+        path = Path(file)
+        if not path.exists():
+            log.error(f"File does not exist: {file}")
+            return True
+
         try:
-            with xr.open_dataset(file) as ds:
-                if not ds or len(ds.data_vars) == 0:
-                    print(f"Empty dataset detected: {file}")
+            with xr.open_dataset(path, engine='netcdf4') as ds:
+                if ds is None or not ds.data_vars:
+                    log.warning(f"Empty or invalid dataset: {file}")
+                    return True
+                # Optional: check if dimensions or variables are unexpectedly missing
+                if any(dim_size == 0 for dim_size in ds.sizes.values()):
+                    log.warning(f"Dataset contains empty dimensions: {file}")
                     return True
         except Exception as e:
-            print(f"Error opening {file}: {e}")
+            log.exception(f"Error opening file {file}: {e}")
             return True
-    
+
     return False
 
 

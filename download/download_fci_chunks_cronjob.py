@@ -39,6 +39,7 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from shapely.geometry import LineString
 from satpy import Scene
+from datetime import datetime, timezone, timedelta
 
 # read credentials from file
 from credentials import *   
@@ -48,153 +49,79 @@ from domain import user_roi
 
 def main():
 
-    # Feed the token object with your credentials, find yours at https://api.eumetsat.int/api-key/
+    # Feed the token object with your credentials
     credentials = (consumer_key, consumer_secret)
     token = eumdac.AccessToken(credentials)
-    print(f"This token '{token}' expires {token.expiration}") 
-    #################################################
+    print(f"This token '{token}' expires {token.expiration}")
 
-    # Create datastore object with with your token
+    # Create datastore object
     datastore = eumdac.DataStore(token)
 
-    # Select an FCI collection (check file collections.txt for desired product)
-    # eg "FCI Level 1c High Resolution Image Data - MTG - 0 degree" - "EO:EUM:DAT:0665"
     selected_collection = datastore.get_collection('EO:EUM:DAT:0665')
     print(selected_collection)
 
-    ###################################################
-    # define set of days to process
+    # Define fixed start date
     date_start = datetime.datetime(2025, 7, 3)
-    date_end = datetime.datetime(2025, 7, 15)
-    ###################################################
 
-    # find all dates between date_start and date_end
+    # Compute yesterday dynamically
+    yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+    date_end = datetime(yesterday.year, yesterday.month, yesterday.day, tzinfo=timezone.utc)
+
+    # Create date range from start to yesterday
     date_range = [date_start + datetime.timedelta(days=x) for x in range(0, (date_end - date_start).days + 1)]
-    
-    # loop on date_range
+
+    # Load chunk polygons and relevant chunks once (outside loop)
+    chunk_polygons, roi_polygon, relevant_chunks = load_chunk_poligons("FCI_chunks.wkt", user_roi)
+    print(f"Defined ROI: {user_roi}")
+
     for i_date, day_process in enumerate(date_range):
-        
+
         print(f"Processing date {i_date + 1}/{len(date_range)}: {day_process.strftime('%Y-%m-%d')}")
-        
-        # define start and end time for the day
+
+        # Define time window for the day
         start = datetime.datetime(day_process.year, day_process.month, day_process.day, 0, 0)
         end = datetime.datetime(day_process.year, day_process.month, day_process.day, 23, 59)
-        
-        # build datetime for output for the day
-        time_str = str(day_process.year)+str(day_process.month).zfill(2)+str(day_process.day).zfill(2)
-    
-        # create output directory for the selected day of the form /yyyy/mm/dd/
+
+        # Create output directory for the day
         output_folder = create_output_folder(day_process, path_input='/data/trade_pc/mtg/fci/')
 
-        # Define ROI bounds (latitude and longitude bounding bbox)
-        print(f"Defined ROI: {user_roi}")
+        # List downloaded chunk files in output folder
+        downloaded_files = set(os.path.basename(f) for f in glob.glob(os.path.join(output_folder, '*N__O_0*.nc')))
+        print(f"{len(downloaded_files)} files already downloaded for {day_process.strftime('%Y-%m-%d')}.")
 
-        # Load chunk polygons and find relevant chunks
-        chunk_polygons, roi_polygon, relevant_chunks = load_chunk_poligons("FCI_chunks.wkt", user_roi)
+        # Build expected filenames for relevant chunks
+        expected_filenames = set()
+        # For each chunk, the file pattern includes chunk id like *_<chunk_id>.nc
+        # We'll search products to find exact file names
 
-        # Retrieve datasets that match the filter
-        products = selected_collection.search(
-            dtstart=start,
-            dtend=end)
-        
-        # Print the number of products found
-        print(f"{products.total_results} products found:")
-        filenames = [product._id for product in products]
+        # Instead of guessing filenames, use collection search to find products for the day
+        products = selected_collection.search(dtstart=start, dtend=end)
+        print(f"{products.total_results} products found for {day_process.strftime('%Y-%m-%d')}.")
 
-        # check if any filename of filenames exists in the output folder
-        files_in = np.sort(glob.glob(output_folder+'*N__O_0*.nc'))
-        print('Files in output folder:', files_in)
+        # Gather expected files for relevant chunks from products metadata
+        expected_filenames = set()
+        for product in products:
+            for entry in product.entries:
+                for chunk_id in relevant_chunks:
+                    if f"_{chunk_id}.nc" in entry:
+                        expected_filenames.add(os.path.basename(entry))
 
-        # if the number of files in files is less than 432 then do the download otherwise skip
-        if len(files_in) != 432:
-        
-            # Run the function to download chunks in the time window for the entire selection
+        # Determine missing files
+        missing_files = expected_filenames - downloaded_files
+
+        if missing_files:
+            print(f"{len(missing_files)} missing files to download for {day_process.strftime('%Y-%m-%d')}.")
             download_chunks_in_time_window(
-                    selected_collection=selected_collection, 
-                    dtstart=start,
-                    dtend=end, 
-                    chunk_ids=relevant_chunks, 
-                    output_folder=output_folder)
-                
-            print('Downloading files')
-            
+                selected_collection=selected_collection,
+                dtstart=start,
+                dtend=end,
+                chunk_ids=relevant_chunks,
+                output_folder=output_folder)
         else:
-             print('Already downloaded all the files')
-    
-    print("Download completed.")
+            print(f"All files already downloaded for {day_process.strftime('%Y-%m-%d')}.")
 
+    print("Download completed for all days.")
 
-            # Convert chunk polygons to a GeoDataFrame
-            #gdf_chunks = gpd.GeoDataFrame({"chunk_id": list(chunk_polygons.keys()), "geometry": list(chunk_polygons.values())}, crs="EPSG:4326")
-
-            # plot chunks
-            #done = plot_chunks(gdf_chunks, roi_polygon)
-
-            #print(f"Time window: from {start} to {end}.")
-
-            # Run the function to download chunks in the time window
-            #ownload_chunks_in_time_window(
-            #    selected_collection=selected_collection, 
-            #    dtstart=start,
-            #    dtend=end, 
-            ##    chunk_ids=relevant_chunks, 
-            #    output_folder=output_folder)
-
-            #print("Download completed.")
-
-        #else:
-           # print('Already downloaded all the files')
-        #strasuka
-        #
-    # set date of yesterday
-    #yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
-    #start = datetime.datetime(yesterday.year, yesterday.month, yesterday.day, 0, 0)
-    #end = datetime.datetime(yesterday.year, yesterday.month, yesterday.day, 23, 59)
-
-    # build datetime for output for the day
-    #time_str = str(yesterday.year)+str(yesterday.month).zfill(2)+str(yesterday.day).zfill(2)
-    
-    # create output directory for the selected day
-    #output_folder = create_output_folder(yesterday, path_input='/data/trade_pc/mtg/fci/')
-
-    # list files in output folder
-    #files = np.sort(glob.glob(output_folder+'*N__O_0*.nc'))
-    
-
-        #print('Downloading files')
-        ## Retrieve datasets that match the filter
-       # products = selected_collection.search(
-        #    dtstart=start,
-        #    dtend=end)
-
-       # print(f"{products.total_results} products found:")
-
-        # Define ROI bounds (latitude and longitude bounding bbox)
-        #print(f"Defined ROI: {user_roi}")
-
-        # Load chunk polygons and find relevant chunks
-        #chunk_polygons, roi_polygon, relevant_chunks = load_chunk_poligons("readers/FCI_chunks.wkt", user_roi)
-
-        # Convert chunk polygons to a GeoDataFrame
-        #gdf_chunks = gpd.GeoDataFrame({"chunk_id": list(chunk_polygons.keys()), "geometry": list(chunk_polygons.values())}, crs="EPSG:4326")
-
-        # plot chunks
-        #done = plot_chunks(gdf_chunks, roi_polygon)
-
-        #print(f"Time window: from {start} to {end}.")
-
-        # Run the function to download chunks in the time window
-        #download_chunks_in_time_window(
-        #    selected_collection=selected_collection, 
-        #    dtstart=start,
-        #    dtend=end, 
-       #     chunk_ids=relevant_chunks, 
-       #     output_folder=output_folder)
-
-        #print("Download completed.")
-
-    #else:
-   #     print('Already downloaded all the files')
    
 
 # This function converts the user-defined ROI to a Shapely Polygon

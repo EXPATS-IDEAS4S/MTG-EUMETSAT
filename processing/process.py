@@ -84,3 +84,6 @@ def save_daily(ds, day_ts, config, channel, suffix=None):
     enc['time'] = {'dtype': 'i4', 'units': 'seconds since 2000-01-01'}
 
     ds.to_netcdf(path, format='NETCDF4', encoding=enc)
+
+    #clean up dataset to free memory
+    ds.close()

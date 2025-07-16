@@ -27,6 +27,7 @@ TODO:
 import logging
 from pathlib import Path
 import xarray as xr
+import gc
 
 # --- External config ---
 from config import CONFIG as cfg
@@ -72,9 +73,17 @@ def main():
         cth_f = cth_map.get(ts)
         print(mtg_f, cth_f)
 
+        #make sure mtg_f and cth_f are lists
+        if isinstance(mtg_f, str):
+            mtg_f = [mtg_f]
+            
+        if isinstance(cth_f, str) and cth_f!= None:
+            cth_f = [cth_f]
+
         #check if files are corrupted
 
         corrupted = has_corrupted_files(mtg_f)
+        print(f"Corrupted MTG files: {corrupted}")
         missing = not mtg_f or corrupted  #or (cfg['parallax'] and not cth_f)
 
         for channel, grid in zip(cfg['channels'], grids):
@@ -98,6 +107,7 @@ def main():
 
                         ds_coords.to_netcdf(out_path, format='NETCDF4')
                         print(f"Saved original coords for {channel} at {ts}")
+                        ds_coords.close()  # Close the dataset to free memory
                     else:
                         print(f"Original coords for {channel} already exist at {out_path}, skipping.")
 
@@ -116,6 +126,11 @@ def main():
                 )
             last_day_per_channel[channel] = day
 
+        # Clean up memory
+        del ds
+        gc.collect()
+
+
 
     # Final flush
     for channel, ds_day in daily_ds_per_channel.items():
@@ -128,4 +143,4 @@ if __name__ == '__main__':
     main()
 
 
-#2114797 nohup
+#2132616 nohup

@@ -25,8 +25,8 @@ CONFIG = {
 
     "parallax": False,                                         # Enable parallax correction using CTH data
     "time_interval_min": 10,                                   # Time step (in minutes) between successive files
-    "start_date": "2025.06.06",                                # Start date (YYYY.MM.DD) for processing period
-    "end_date": "2025.07.01",                                  # End date (YYYY.MM.DD) for processing period (last date excluded)
+    "start_date": "2025.07.01",                                # Start date (YYYY.MM.DD) for processing period
+    "end_date": "2025.07.15",                                  # End date (YYYY.MM.DD) for processing period (last date excluded)
 
     "regular_grid": False,                                     # Whether to regrid data to a regular lat/lon grid
     "interp_method": "nearest",                                # Interpolation method for regridding (if enabled)
