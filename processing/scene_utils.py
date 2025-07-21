@@ -52,6 +52,16 @@ def has_corrupted_files(mtg_files, verbose=False):
     return False
 
 
+def get_channel(channels, parallax):
+    #make an empty list with same length as channels
+    new_channels = [None] * len(channels)
+    for idx, channel in enumerate(channels):
+        if parallax:
+            new_channels[idx] = 'parallax_corrected_'+channel
+        else:
+            new_channels[idx] = channel
+    return new_channels
+
 
 def make_scene(msg_file, cth_file, config):
     """
@@ -65,16 +75,16 @@ def make_scene(msg_file, cth_file, config):
     Returns:
         satpy.Scene: Initialized Scene with appropriate readers.
     """
+    #print(f"Creating scene with MTG file: {msg_file}, with reader {config['mtg_reader']}")
+    #print(f"Using CTH file: {cth_file}, with reader {config['cth_reader']}")
+
     if config['parallax']:
-        return Scene({
-            config['mtg_reader']: [str(msg_file)],
-            config['cth_reader']: [str(cth_file)]
-        })
+        return Scene({config['mtg_reader']: msg_file, config['cth_reader']: cth_file})
     else:
         return Scene(reader=config['mtg_reader'], filenames=msg_file)
 
 
-def load_and_crop(scene: Scene, channels, roi):
+def load_and_crop(scene: Scene, channels, roi, parallax=False):
     """
     Load specific channels and crop the Scene to the given geographic bounding box.
 
@@ -82,10 +92,12 @@ def load_and_crop(scene: Scene, channels, roi):
         scene (satpy.Scene): A Satpy Scene object.
         channels (list of str): List of channels to load.
         roi (dict): Region of interest with keys 'lon_min', 'lat_min', 'lon_max', 'lat_max'.
+        parallax (bool): Whether to apply parallax correction.
 
     Returns:
         satpy.Scene: Cropped Scene with loaded channels.
     """
+    channels = get_channel(channels, parallax)
     scene.load(channels)
     crop = scene.crop(ll_bbox=(roi['lon_min'], roi['lat_min'], roi['lon_max'], roi['lat_max']))
     return crop

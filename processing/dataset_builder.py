@@ -9,8 +9,11 @@ Includes:
 
 import numpy as np
 import xarray as xr
+import dask.array as da
+import dask
 
 from grid_utils import regrid_data, fill_missing_data_with_interpolation
+from scene_utils import get_channel
 
 
 def preprocess_array(arr, lat_src, lon_src, target_grid, method):
@@ -45,9 +48,33 @@ def build_data_vars(crop, ch, config, grid):
     Returns:
         dict: Dictionary of (dims, values) for xarray.Dataset.
     """
+
     data_vars = {}
     is_regular = config.get('regular_grid', False)
-    raw = crop[ch].values.astype(np.float32)
+    ch = get_channel([ch], config['parallax'])[0]  # Ensure ch is a string
+
+    # Limit memory usage per Dask chunk/task
+    #dask.config.set({'array.chunk-size': '10MB'})
+
+    # Get Dask-backed xarray.DataArray
+    data = crop[ch].values
+
+    # Convert to float32 early (if not already)
+    data = data.astype(np.float32)
+
+    # Rechunk to smaller pieces for efficient compute
+    data = data.chunk((64, 64)) #TODO try smaller chunks for better performance
+
+    # Load into memory safely while preserving xarray structure
+    data.load()
+
+    # If you absolutely need a NumPy array (e.g. for further NumPy ops):
+    raw_np = data.data if isinstance(data.data, np.ndarray) else data.compute().data
+
+    # DEBUG: Inspect result
+    print(raw_np)
+    exit()
+
 
     if is_regular:
         lat_src, lon_src = crop[ch].attrs['area'].get_lonlats()

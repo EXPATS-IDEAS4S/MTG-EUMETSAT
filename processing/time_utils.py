@@ -51,11 +51,13 @@ def extract_mtg_time(fname: Path, interval: int = 10) -> datetime:
     return dt.replace(minute=rounded_min, second=0, microsecond=0)
 
 
-def extract_cth_time(fname: Path):
-    """
-    Extract timestamp from a CTH filename using a fixed string slice.
 
-    Assumes timestamp is in the form: 'cth_YYYYMMDDHHMM.nc'
+def extract_cth_time(fname: Path) -> datetime:
+    """
+    Extract start time from an OCA CTH filename.
+
+    Assumes timestamp is in the 8th underscore-separated field of the filename,
+    e.g. 'W_XX-EUMETSAT-..._20250522233000_...nc'
 
     Parameters:
         fname (Path): Path to the CTH file.
@@ -63,5 +65,5 @@ def extract_cth_time(fname: Path):
     Returns:
         datetime: Parsed datetime from filename.
     """
-    tstr = fname.name.split('.')[0][5:17]
-    return datetime.strptime(tstr, '%Y%m%d%H%M')
+    time_str = fname.name.split('_')[7]  # e.g., '20250522233000'
+    return datetime.strptime(time_str, '%Y%m%d%H%M%S')

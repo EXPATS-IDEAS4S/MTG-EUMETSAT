@@ -13,7 +13,7 @@ from scene_utils import make_scene, load_and_crop
 from dataset_builder import build_data_vars, build_coords
 
 
-def process_timestamp(ts, channel, msg_file, cth_file, config, grid=None, merge_coords=True):
+def process_timestamp(ts, channel, msg_file, cth_file, config, grid=None):
     """
     Processes a single timestamp by:
     1. Creating a scene from MTG/CTH files.
@@ -34,12 +34,19 @@ def process_timestamp(ts, channel, msg_file, cth_file, config, grid=None, merge_
     Returns:
         xr.Dataset: Final processed dataset for the timestamp.
     """
+    #print(cth_file)
+    ds = xr.open_dataset(cth_file[0], engine='netcdf4') 
+    #print(ds['retrieved_cloud_top_height'].attrs)
     scn = make_scene(msg_file, cth_file, config)
-    cropped = load_and_crop(scn, [channel], config['roi'])
+    #print(scn.available_dataset_names())
+    #scn.load(['retrieved_cloud_top_height'])
+    cropped = load_and_crop(scn, [channel], config['roi'], config['parallax'])
     data_vars = build_data_vars(cropped, channel, config, grid)
+    print(data_vars)
+    exit()
     coords = build_coords(cropped, channel, config, grid, ts)
 
-    if merge_coords:
+    if config['regular_grid']:
         ds = xr.Dataset(data_vars=data_vars, coords=coords)
     else:
         ds = xr.Dataset(data_vars=data_vars)

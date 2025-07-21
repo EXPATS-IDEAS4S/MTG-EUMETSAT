@@ -20,7 +20,7 @@ Authors:
 
 TODO:
     - Implement full CTH reader integration and parallax correction
-    - Consider saving original lat/lon as regular variables even with regridding
+    - Consider saving original lat/lon as regular variables with regridding
     - Add option to delete original chunked output post-processing
 """
 
@@ -52,16 +52,19 @@ def main():
 
     # build your list of timestamps
     timestamps = compute_timestamps(start, end, cfg["time_interval_min"])[:-1]
-    #print(timestamps)
 
     # now only look under the yyyy/mm/dd folders for those dates
     mtg_files = list_mtg_files(cfg["mtg_base"], timestamps, pattern=cfg['file_extension'])
     print(f"Found {len(mtg_files)} MTG files.")
  
     cth_files = list_cth_files(cfg['cth_base'], '*.nc')
-    mtg_map = build_time_map(mtg_files, lambda f: extract_mtg_time(f, cfg['time_interval_min']))
+    print(f"Found {len(cth_files)} CTH files.")
 
+    mtg_map = build_time_map(mtg_files, lambda f: extract_mtg_time(f, cfg['time_interval_min']))
     cth_map = build_time_map(cth_files, extract_cth_time)
+    #print(f"MTG time map: {mtg_map}")
+    #print(f"CTH time map: {cth_map}")
+    
     grids = make_regular_grid(cfg['roi'], cfg['grid_step_deg']) if cfg['regular_grid'] else [None]*len(cfg['channels'])
 
     # Initialize tracking per channel
@@ -69,6 +72,7 @@ def main():
     last_day_per_channel = {ch: None for ch in cfg['channels']}
 
     for idx, ts in enumerate(timestamps):
+        log.info(f"Processing timestamp {ts} ({idx+1}/{len(timestamps)})")
         mtg_f = mtg_map.get(ts)
         cth_f = cth_map.get(ts)
         print(mtg_f, cth_f)
@@ -80,11 +84,10 @@ def main():
         if isinstance(cth_f, str) and cth_f!= None:
             cth_f = [cth_f]
 
-        #check if files are corrupted
-
+        #check if files are corrupted or missing
         corrupted = has_corrupted_files(mtg_f)
         print(f"Corrupted MTG files: {corrupted}")
-        missing = not mtg_f or corrupted  #or (cfg['parallax'] and not cth_f)
+        missing = (not mtg_f) or corrupted or (cfg['parallax'] and not cth_f)
 
         for channel, grid in zip(cfg['channels'], grids):
             print(f"Processing {ts} for channel {channel}")
@@ -95,9 +98,11 @@ def main():
             else:
                 # Save original lat/lon coords once if not regular grid
                 if not cfg['regular_grid'] and idx == 0:
-                    out_path = cfg['output_base'] / f"{channel}_original_coords.nc"
+                    #TODO make paths configurable
+                    coord_path = f"/data/trade_pc/mtg/fci/{channel}_original_coords.nc"
+                    coord_path = Path(coord_path)
 
-                    if not out_path.exists():
+                    if not coord_path.exists():
                         scn = make_scene(mtg_f, cth_f, cfg)
                         crop = load_and_crop(scn, [channel], cfg['roi'])
                         ds_coords = build_coords(crop, channel, cfg, grid, ts)
@@ -105,13 +110,15 @@ def main():
                         # Create output folder if it does not exist
                         cfg['output_base'].mkdir(parents=True, exist_ok=True)
 
-                        ds_coords.to_netcdf(out_path, format='NETCDF4')
+                        ds_coords.to_netcdf(coord_path, format='NETCDF4')
                         print(f"Saved original coords for {channel} at {ts}")
                         ds_coords.close()  # Close the dataset to free memory
                     else:
-                        print(f"Original coords for {channel} already exist at {out_path}, skipping.")
+                        print(f"Original coords for {channel} already exist at {coord_path}, skipping.")
 
-                ds = process_timestamp(ts, channel, mtg_f, cth_f, cfg, grid, cfg['regular_grid'])
+                ds = process_timestamp(ts, channel, mtg_f, cth_f, cfg, grid)
+                print(ds)
+                exit()
 
             # Daily concat logic (same as before)
             day = ts.day

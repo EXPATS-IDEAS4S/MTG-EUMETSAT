@@ -8,12 +8,12 @@ including file paths, temporal settings, selected channels, ROI, and processing 
 from pathlib import Path
 
 CONFIG = {
-    "output_base": Path("/data/trade_pc/mtg/fci/processed/no_parallax/original_grid/"),  # Output directory for processed datasets
+    "output_base": Path("/data/trade_pc/mtg/fci/processed/parallax/original_grid/"),  # Output directory for processed datasets
     "mtg_base": Path("/data/trade_pc/mtg/fci/"),               # Base directory containing raw MTG FCI input files
-    "cth_base": None,                                          # Optional: directory containing Cloud Top Height files (set to None if unused)
+    "cth_base": Path("/data/sat/mtg/fci/oca/processing_for_parallax/"),                                          # Optional: directory containing Cloud Top Height files (set to None if unused)
     "file_extension": "*.nc",                                  # File extension/pattern for MTG files to process
     "mtg_reader": "fci_l1c_nc",                                # Reader module/method for MTG files
-    "cth_reader": None,                                        # Optional: reader module for CTH files (if applicable)
+    "cth_reader": "fci_l2_nc",                                        # Optional: reader module for CTH files (if applicable)
 
     "channels": ["ir_105","vis_06"],                          # List of MTG channels to process
     "roi": {                                                   # Region of interest for cropping the data
@@ -23,10 +23,10 @@ CONFIG = {
         "lat_max": 52
     },
 
-    "parallax": False,                                         # Enable parallax correction using CTH data
+    "parallax": True,                                         # Enable parallax correction using CTH data
     "time_interval_min": 10,                                   # Time step (in minutes) between successive files
-    "start_date": "2025.07.01",                                # Start date (YYYY.MM.DD) for processing period
-    "end_date": "2025.07.15",                                  # End date (YYYY.MM.DD) for processing period (last date excluded)
+    "start_date": "2025.05.22",                                # Start date (YYYY.MM.DD) for processing period
+    "end_date": "2025.05.23",                                  # End date (YYYY.MM.DD) for processing period (last date excluded)
 
     "regular_grid": False,                                     # Whether to regrid data to a regular lat/lon grid
     "interp_method": "nearest",                                # Interpolation method for regridding (if enabled)
