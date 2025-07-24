@@ -35,15 +35,13 @@ def process_timestamp(ts, channel, msg_file, cth_file, config, grid=None):
         xr.Dataset: Final processed dataset for the timestamp.
     """
     #print(cth_file)
-    ds = xr.open_dataset(cth_file[0], engine='netcdf4') 
+    #ds = xr.open_dataset(cth_file[0], engine='netcdf4') 
     #print(ds['retrieved_cloud_top_height'].attrs)
     scn = make_scene(msg_file, cth_file, config)
     #print(scn.available_dataset_names())
     #scn.load(['retrieved_cloud_top_height'])
     cropped = load_and_crop(scn, [channel], config['roi'], config['parallax'])
     data_vars = build_data_vars(cropped, channel, config, grid)
-    print(data_vars)
-    exit()
     coords = build_coords(cropped, channel, config, grid, ts)
 
     if config['regular_grid']:
@@ -51,6 +49,16 @@ def process_timestamp(ts, channel, msg_file, cth_file, config, grid=None):
     else:
         ds = xr.Dataset(data_vars=data_vars)
         ds['time'] = (('time',), [ts])
+    
+    if config['save_timestamps']:
+        #save the dataset  in netcdf format
+    
+        ds.to_netcdf(
+            config['output_base'] / f"{channel}_{ts}.nc",
+            format='NETCDF4',
+            encoding={var: {'zlib': True, 'complevel': config['compress_level']} for var in ds.data_vars}
+        )
+
 
     return ds
 

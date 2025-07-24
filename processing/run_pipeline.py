@@ -28,6 +28,9 @@ import logging
 from pathlib import Path
 import xarray as xr
 import gc
+import time
+import warnings
+import numpy as np
 
 # --- External config ---
 from config import CONFIG as cfg
@@ -43,7 +46,8 @@ from grid_utils import make_regular_grid
 # --- Logging setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 log = logging.getLogger(__name__)
-
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+np.seterr(invalid='ignore')
 
 # --- Main workflow ---
 def main():
@@ -99,8 +103,9 @@ def main():
                 # Save original lat/lon coords once if not regular grid
                 if not cfg['regular_grid'] and idx == 0:
                     #TODO make paths configurable
-                    coord_path = f"/data/trade_pc/mtg/fci/{channel}_original_coords.nc"
+                    coord_path = f"{cfg['mtg_base']}/{channel}_original_coords.nc"
                     coord_path = Path(coord_path)
+                    print(f"Checking for original coords at {coord_path}")
 
                     if not coord_path.exists():
                         scn = make_scene(mtg_f, cth_f, cfg)
@@ -117,8 +122,6 @@ def main():
                         print(f"Original coords for {channel} already exist at {coord_path}, skipping.")
 
                 ds = process_timestamp(ts, channel, mtg_f, cth_f, cfg, grid)
-                print(ds)
-                exit()
 
             # Daily concat logic (same as before)
             day = ts.day
@@ -147,7 +150,13 @@ def main():
     log.info("Processing complete.")
 
 if __name__ == '__main__':
+    #track time 
+    start_time = time.time()
+    log.info("Starting MTG processing pipeline...")
     main()
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    log.info(f"Pipeline completed in {elapsed_time:.2f} seconds.")
 
 
-#2132616 nohup
+#2542407 nohup

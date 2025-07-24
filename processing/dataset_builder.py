@@ -52,29 +52,14 @@ def build_data_vars(crop, ch, config, grid):
     data_vars = {}
     is_regular = config.get('regular_grid', False)
     ch = get_channel([ch], config['parallax'])[0]  # Ensure ch is a string
-
-    # Limit memory usage per Dask chunk/task
-    #dask.config.set({'array.chunk-size': '10MB'})
-
+    
+    #TODO add the rechunking logic and memery efficent way to handle dask arrays here
+    
     # Get Dask-backed xarray.DataArray
-    data = crop[ch].values
+    raw = crop[ch].values
 
     # Convert to float32 early (if not already)
-    data = data.astype(np.float32)
-
-    # Rechunk to smaller pieces for efficient compute
-    data = data.chunk((64, 64)) #TODO try smaller chunks for better performance
-
-    # Load into memory safely while preserving xarray structure
-    data.load()
-
-    # If you absolutely need a NumPy array (e.g. for further NumPy ops):
-    raw_np = data.data if isinstance(data.data, np.ndarray) else data.compute().data
-
-    # DEBUG: Inspect result
-    print(raw_np)
-    exit()
-
+    raw = raw.astype(np.float32)
 
     if is_regular:
         lat_src, lon_src = crop[ch].attrs['area'].get_lonlats()
@@ -112,6 +97,7 @@ def build_coords(crop, ch, config, grid, ts):
             'time': (('time',), [ts])
         }
     else:
+        ch = get_channel([ch], config['parallax'])[0]
         lon2d, lat2d = crop[ch].attrs['area'].get_lonlats()
         ny, nx = lat2d.shape
         coords = {
@@ -141,7 +127,7 @@ def create_nan_dataset(ts, channel, config, grid):
     regular = config.get('regular_grid', False)
 
     if not regular:
-        coord_path = config['output_base'] / f"{channel}_original_coords.nc"
+        coord_path = config['mtg_base'] / f"{channel}_original_coords.nc"
         if not coord_path.exists():
             raise FileNotFoundError(f"Coordinate reference file not found: {coord_path}")
         coords_ds = xr.load_dataset(coord_path)
@@ -151,7 +137,7 @@ def create_nan_dataset(ts, channel, config, grid):
                 return coords_ds['longitude'].values, coords_ds['latitude'].values
 
         crop = {
-            channel: xr.DataArray(
+                get_channel([channel], config['parallax'])[0]: xr.DataArray(
                 np.zeros_like(coords_ds['latitude'].values, dtype=np.float32),
                 attrs={'area': MockArea()}
             )
