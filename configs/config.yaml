@@ -1,0 +1,93 @@
+credentials:
+  credentials_file: download/credentials.py
+  consumer_key: null
+  consumer_secret: null
+
+download:
+  download_workers: 4
+  download_products:
+    - name: fci_normal_res
+      enabled: true
+      collection_id: "EO:EUM:DAT:0662"
+      base: /sat_data/MTG/FCI/normal_res/
+      mode: chunked
+      wkt_file: FCI_chunks.wkt
+    - name: fci_high_res
+      enabled: false
+      collection_id: "EO:EUM:DAT:0665"
+      base: /sat_data/MTG/FCI/high_res/
+      mode: chunked
+      wkt_file: FCI_chunks.wkt
+    - name: cloud_mask
+      enabled: true
+      collection_id: "EO:EUM:DAT:0678"
+      base: /sat_data/MTG/FCI/cloud_masks/
+      mode: single
+    - name: oca
+      enabled: true
+      collection_id: "EO:EUM:DAT:0684"
+      base: /sat_data/MTG/FCI/oca/
+      mode: single
+
+oca:
+  oca_source_base: /sat_data/MTG/FCI/oca/
+  cth_source_base: /sat_data/MTG/FCI/oca/
+  cth_base: /sat_data/MTG/FCI/oca/cth/
+  cth_variable: retrieved_cloud_top_height
+
+processing:
+  process_base: /sat_data/MTG/FCI/processed/
+  normal_res_output_base: /sat_data/MTG/FCI/processed/normal_res/
+  high_res_output_base: /sat_data/MTG/FCI/processed/high_res/
+  oca_output_base: /sat_data/MTG/FCI/processed/oca/
+  file_extension: "*.nc"
+  mtg_reader: fci_l1c_nc
+  cth_reader: fci_l2_nc
+
+channels:
+  normal_res_channels: [ir_105, wv_63]
+  high_res_channels: [ir_105]
+  oca_variables: [retrieved_cloud_top_height]
+  cma_variable: cloud_state
+  cma_variables: [cloud_state, cma]
+  cma_output_name: cma
+
+roi:
+  lon_min: -10
+  lat_min: 35
+  lon_max: 30
+  lat_max: 56
+  roi_name: europe
+  roi_buffer_deg: 0.1
+
+parallax:
+  enabled: false
+  use_reduced_cth: true
+
+temporal:
+  time_interval_min: 10
+  timestamps_per_day: 144
+  start_date: "2025.04.01"
+  end_date: "2025.04.02"
+
+regrid:
+  regular_grid: false
+  grid_step_deg:
+    - [0.020, 0.020]
+  interp_method: nearest
+  save_timestamps: false
+
+netcdf:
+  compress_level: 9
+  delete_chunks: false
+
+performance:
+  max_workers: 4
+
+upload:
+  upload_target: null
+  upload_command: null
+
+plotting:
+  cloud_mask_plot: true
+  quicklook_browser_output_path: /data/obs/campaigns/teamx/quicklooks/mtg_fci_mp4/

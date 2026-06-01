@@ -5,3 +5,5 @@ download/credentials.py
 __pycache__
 
 nohup.out
+
+bucket/s3_credentials.py

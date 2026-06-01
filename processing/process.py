@@ -8,8 +8,9 @@ Includes:
 
 import xarray as xr
 import pandas as pd
+from pathlib import Path
 
-from scene_utils import make_scene, load_and_crop
+from utils.scene_utils import make_scene, load_and_crop
 from dataset_builder import build_data_vars, build_coords
 
 
@@ -51,14 +52,19 @@ def process_timestamp(ts, channel, msg_file, cth_file, config, grid=None):
         ds['time'] = (('time',), [ts])
     
     if config['save_timestamps']:
-        #save the dataset  in netcdf format
-    
+        #save the dataset  in netcdf format to base/roi_name/channel/YYYY/MM/
+        out_base = Path(config.get('process_base'))
+        roi_name = config.get('roi_name')
+        ts_year = f"{ts.year:04d}"
+        ts_month = f"{ts.month:02d}"
+        ts_dir = out_base / roi_name / channel / ts_year / ts_month
+        ts_dir.mkdir(parents=True, exist_ok=True)
+        
         ds.to_netcdf(
-            config['output_base'] / f"{channel}_{ts}.nc",
+            ts_dir / f"{channel}_{ts}.nc",
             format='NETCDF4',
             encoding={var: {'zlib': True, 'complevel': config['compress_level']} for var in ds.data_vars}
         )
-
 
     return ds
 
@@ -77,8 +83,13 @@ def save_daily(ds, day_ts, config, channel, suffix=None):
     Returns:
         None
     """
+    from pathlib import Path
     day_ts = pd.to_datetime(day_ts).to_pydatetime()
-    outdir = config['output_base'] / f"{day_ts.year:04d}" / f"{day_ts.month:02d}"
+    out_base = Path(config.get('output_base', config.get('process_base')))
+    roi_name = config.get('roi_name', 'roi')
+    day_year = f"{day_ts.year:04d}"
+    day_month = f"{day_ts.month:02d}"
+    outdir = out_base / roi_name / channel / day_year / day_month
     outdir.mkdir(parents=True, exist_ok=True)
 
     if suffix is None:

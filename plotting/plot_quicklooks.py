@@ -23,7 +23,7 @@ nohup python3 plotting/plot_quicklooks.py > plotting/plot_quicklooks.log 2>&1 &
 
 """
 
-from plotting.plot_utils import channel_configs, same_image_seq_as_mp4, domain_TEAMX, mtg_fci_daily_files_path, quicklook_browser_output_path
+from utils.plot_utils import channel_configs, same_image_seq_as_mp4, domain_TEAMX, mtg_fci_daily_files_path, quicklook_browser_output_path
 
 
 from pathlib import Path
@@ -72,7 +72,7 @@ def load_coords(channel: str):
     """
     Load data for one day for a specific channel.
     """
-    from plotting.plot_utils import coords_file_path
+    from utils.plot_utils import coords_file_path
     coord_file = f"{coords_file_path}/{channel}_original_coords.nc"
     ds_coords = xr.open_dataset(coord_file)
     
@@ -82,8 +82,8 @@ def plot_one_step(outdir, data, lat, lon, ts, channel, cmap='viridis', vmin=None
     """
     Plot a single timestep of data using Cartopy.
     """
-    from plotting.plot_utils import channel_configs, domain_ACTA
-    from plotting.plot_utils import plot_teamx_sites
+    from utils.plot_utils import channel_configs, domain_ACTA
+    from utils.plot_utils import plot_teamx_sites
     fig = plt.figure(figsize=(8, 6))
     ax = plt.axes(projection=ccrs.PlateCarree())
 
@@ -118,11 +118,11 @@ def plot_one_step(outdir, data, lat, lon, ts, channel, cmap='viridis', vmin=None
 def main():
     
     # read folder for accessing data ncdf daily files 
-    from plotting.plot_utils import mtg_fci_daily_files_path as folder  # 🔁 Replace with actual path
+    from utils.plot_utils import mtg_fci_daily_files_path as folder  # 🔁 Replace with actual path
     
     # read output root for storing plots
-    from plotting.plot_utils import quicklook_browser_output_path as out_root
-    from plotting.plot_utils import coords_file_path 
+    from utils.plot_utils import quicklook_browser_output_path as out_root
+    from utils.plot_utils import coords_file_path 
 
     # Find days to plot
     # generate days string for the entire month 2025 06 

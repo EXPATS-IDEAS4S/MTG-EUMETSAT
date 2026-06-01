@@ -12,8 +12,8 @@ import xarray as xr
 import dask.array as da
 import dask
 
-from grid_utils import regrid_data, fill_missing_data_with_interpolation
-from scene_utils import get_channel
+from utils.grid_utils import regrid_data, fill_missing_data_with_interpolation
+from utils.scene_utils import get_channel
 
 
 def preprocess_array(arr, lat_src, lon_src, target_grid, method):

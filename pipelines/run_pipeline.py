@@ -16,7 +16,6 @@ Main features:
 
 Authors:
     Daniele Corradini
-    Claudia Acquistapace
 
 TODO:
     - Implement full CTH reader integration and parallax correction
@@ -31,17 +30,19 @@ import gc
 import time
 import warnings
 import numpy as np
-
-# --- External config ---
-from config import CONFIG as cfg
+import sys
 
 # --- Internal modules ---
-from time_utils import compute_timestamps,  extract_mtg_time, extract_cth_time
-from io_utils import list_mtg_files, list_cth_files, build_time_map
-from scene_utils import make_scene, load_and_crop, has_corrupted_files
+from utils.time_utils import compute_timestamps,  extract_mtg_time, extract_cth_time
+from utils.io_utils import list_mtg_files, list_cth_files, build_time_map
+from utils.scene_utils import make_scene, load_and_crop, has_corrupted_files
 from dataset_builder import build_coords, create_nan_dataset
 from process import process_timestamp, save_daily
-from grid_utils import make_regular_grid
+from utils.grid_utils import make_regular_grid
+
+# --- External config ---
+sys.path.append("/home/Daniele/codes/MTG-EUMETSAT/")
+from configs.config_loader import CONFIG as cfg
 
 # --- Logging setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
@@ -58,14 +59,15 @@ def main():
     timestamps = compute_timestamps(start, end, cfg["time_interval_min"])[:-1]
 
     # now only look under the yyyy/mm/dd folders for those dates
-    mtg_files = list_mtg_files(cfg["mtg_base"], timestamps, pattern=cfg['file_extension'])
+    mtg_files = list_mtg_files(cfg["download_base"] + cfg["roi_name"] + "/", timestamps, pattern=cfg['file_extension'])
     print(f"Found {len(mtg_files)} MTG files.")
- 
-    cth_files = list_cth_files(cfg['cth_base'], '*.nc')
-    print(f"Found {len(cth_files)} CTH files.")
-
     mtg_map = build_time_map(mtg_files, lambda f: extract_mtg_time(f, cfg['time_interval_min']))
-    cth_map = build_time_map(cth_files, extract_cth_time)
+ 
+    if cfg['parallax']:
+        cth_files = list_cth_files(cfg['cth_base'], '*.nc')
+        print(f"Found {len(cth_files)} CTH files.")
+        cth_map = build_time_map(cth_files, extract_cth_time)
+
     #print(f"MTG time map: {mtg_map}")
     #print(f"CTH time map: {cth_map}")
     
@@ -78,15 +80,18 @@ def main():
     for idx, ts in enumerate(timestamps):
         log.info(f"Processing timestamp {ts} ({idx+1}/{len(timestamps)})")
         mtg_f = mtg_map.get(ts)
-        cth_f = cth_map.get(ts)
-        print(mtg_f, cth_f)
+        if cfg['parallax']:
+            cth_f = cth_map.get(ts)
+            if isinstance(cth_f, str) and cth_f!= None:
+                cth_f = [cth_f]
+        else:
+            cth_f = None
+        #print(mtg_f, cth_f)
 
         #make sure mtg_f and cth_f are lists
         if isinstance(mtg_f, str):
             mtg_f = [mtg_f]
             
-        if isinstance(cth_f, str) and cth_f!= None:
-            cth_f = [cth_f]
 
         #check if files are corrupted or missing
         corrupted = has_corrupted_files(mtg_f)
@@ -103,7 +108,7 @@ def main():
                 # Save original lat/lon coords once if not regular grid
                 if not cfg['regular_grid'] and idx == 0:
                     #TODO make paths configurable
-                    coord_path = f"{cfg['mtg_base']}/{channel}_original_coords.nc"
+                    coord_path = f"{cfg['process_base']}/{cfg['roi_name']}/{channel}_original_coords.nc"
                     coord_path = Path(coord_path)
                     print(f"Checking for original coords at {coord_path}")
 
@@ -113,7 +118,7 @@ def main():
                         ds_coords = build_coords(crop, channel, cfg, grid, ts)
 
                         # Create output folder if it does not exist
-                        cfg['output_base'].mkdir(parents=True, exist_ok=True)
+                        coord_path.parent.mkdir(parents=True, exist_ok=True)
 
                         ds_coords.to_netcdf(coord_path, format='NETCDF4')
                         print(f"Saved original coords for {channel} at {ts}")

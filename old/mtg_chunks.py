@@ -38,7 +38,7 @@ from satpy import Scene
 
 # read credentials from file
 from download.credentials import *   
-from download.domain import user_roi
+from old.domain import user_roi
 
 #################################################
 
